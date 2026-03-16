@@ -1,8 +1,4 @@
-"""Separate assignment-ready agent package.
-
-This package is intentionally independent from the existing `context_agent`
-implementation so the original code path remains unchanged.
-"""
+"""Separate assignment-ready agent package for the goal-driven submission."""
 
 from .agent_controller import AssignmentAgentController
 

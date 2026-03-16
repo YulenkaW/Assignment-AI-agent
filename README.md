@@ -18,8 +18,6 @@ The implementation follows the assignment requirements shown in the PDF:
 ## Architecture
 
 The submission-facing package is `assignment_agent`.
-The older `context_agent` package is still present in the repo, but it is not the primary submission target.
-
 ### Main flow
 
 1. User / UI

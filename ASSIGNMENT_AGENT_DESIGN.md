@@ -1,7 +1,6 @@
 # Assignment Agent Design
 
-This file documents the separate `assignment_agent` package.
-It is intentionally independent from `context_agent`.
+This file documents the separate `assignment_agent` package used for the goal-driven submission.
 
 ## Architecture mapping
 

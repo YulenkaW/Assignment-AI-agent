@@ -20,7 +20,6 @@ dev = [
 ]
 
 [project.scripts]
-cpp-agent = "context_agent.command_line:main"
 assignment-agent = "assignment_agent.command_line:main"
 assignment-agent-ui = "assignment_agent.demo_ui:main"
 assignment-agent-goal-ui = "assignment_agent.goal_demo_ui:main"
