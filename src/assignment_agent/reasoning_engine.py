@@ -80,7 +80,6 @@ class ReasoningEngine:
                 return outcome
             except Exception as error:
                 self.logger.warning("Falling back after model reasoning failed: %s", error)
-                self.chat_model = None
                 if diagnostics is not None:
                     diagnostics.reasoning_fallbacks += 1
                     diagnostics.add_fallback("reasoning_engine", str(error))
@@ -215,7 +214,6 @@ class ReasoningEngine:
             )
         except Exception as error:
             self.logger.warning("Falling back after grounded-understanding polish failed: %s", error)
-            self.chat_model = None
             if diagnostics is not None:
                 diagnostics.reasoning_fallbacks += 1
                 diagnostics.add_fallback("reasoning_engine", str(error))

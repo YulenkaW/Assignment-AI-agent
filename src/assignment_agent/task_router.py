@@ -173,7 +173,6 @@ class TaskRouter:
             route_name = self._classify_with_model(query_text)
         except Exception as error:
             self.logger.warning("Falling back to deterministic routing after model intent failure: %s", error)
-            self.chat_model = None
             return None
         if route_name == "build_test_debug":
             return RouteDecision(

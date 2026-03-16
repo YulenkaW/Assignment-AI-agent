@@ -44,8 +44,6 @@ class CommandExecutor:
         Path(r"C:\Program Files\CMake\bin"),
         Path(r"C:\Program Files (x86)\CMake\bin"),
     )
-    _RESOLUTION_CACHE: dict[str, str | None] = {}
-
     def __init__(
         self,
         repository_path: Path,
@@ -214,9 +212,6 @@ class CommandExecutor:
         if not command_name:
             return None
         normalized_name = command_name.lower()
-        cached_value = cls._RESOLUTION_CACHE.get(normalized_name)
-        if normalized_name in cls._RESOLUTION_CACHE:
-            return cached_value
         command_path = Path(command_name)
         if command_path.is_absolute() or command_path.parent != Path("."):
             if command_path.exists():
@@ -227,10 +222,8 @@ class CommandExecutor:
         for candidate_name in candidate_names:
             resolved_path = shutil.which(candidate_name)
             if resolved_path is not None:
-                cls._RESOLUTION_CACHE[normalized_name] = resolved_path
                 return resolved_path
         if os.name != "nt":
-            cls._RESOLUTION_CACHE[normalized_name] = None
             return None
 
         executable_candidates = []
@@ -243,13 +236,10 @@ class CommandExecutor:
             for candidate_name in executable_candidates:
                 candidate_path = directory / candidate_name
                 if candidate_path.exists():
-                    cls._RESOLUTION_CACHE[normalized_name] = str(candidate_path)
                     return str(candidate_path)
         discovered_executable = cls._discover_windows_executable(normalized_name, executable_candidates)
         if discovered_executable is not None:
-            cls._RESOLUTION_CACHE[normalized_name] = discovered_executable
             return discovered_executable
-        cls._RESOLUTION_CACHE[normalized_name] = None
         return None
 
     @classmethod

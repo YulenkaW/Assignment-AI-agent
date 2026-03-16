@@ -33,7 +33,6 @@ from assignment_agent.reasoning_engine import ReasoningEngine
 from assignment_agent.response_generator import ResponseGenerator
 from assignment_agent.stop_retry_controller import StopRetryController
 from assignment_agent.test_runner import TestRunner as AgentTestRunner
-from assignment_agent.tool_orchestrator import ToolOrchestrator
 from assignment_agent.workspace_paths import WorkspacePaths
 
 
@@ -467,14 +466,6 @@ def test_stop_retry_controller_covers_stop_and_retry() -> None:
     assert decision_stop.should_stop is True
 
 
-def test_tool_orchestrator_falls_back_without_model() -> None:
-    orchestrator = ToolOrchestrator("gpt-4.1-mini")
-    route = RouteDecision("code_understanding", 0.9, True, False, "retrieval_first", [])
-    proposal = orchestrator.propose_action("Where is json_pointer defined?", route, ["retrieve_context", "answer_user"], None)
-    assert proposal.action_name == "retrieve_context"
-    assert proposal.source == "controller"
-
-
 def test_context_manager_falls_back_to_plain_counting_when_encoding_unavailable(monkeypatch) -> None:
     manager = ContextManager("gpt-4.1-mini")
     manager.encoding = None
@@ -540,18 +531,6 @@ def test_reasoning_engine_bypasses_model_for_missing_command_failures() -> None:
 
     assert "unavailable on this machine" in outcome.summary_text
     assert "answer_with_limited_evidence" not in "\n".join(outcome.next_steps)
-
-
-def test_tool_orchestrator_falls_back_when_model_call_fails() -> None:
-    orchestrator = ToolOrchestrator("gpt-4.1-mini")
-    orchestrator.chat_model = object()
-    orchestrator._propose_with_model = _raise_runtime_error  # type: ignore[method-assign]
-    route = RouteDecision("code_understanding", 0.9, True, False, "retrieval_first", [])
-
-    proposal = orchestrator.propose_action("Where is json_pointer defined?", route, ["retrieve_context", "answer_user"], None)
-
-    assert proposal.action_name == "retrieve_context"
-    assert proposal.source == "controller"
 
 
 def test_assignment_agent_cli_parser_supports_expected_options() -> None:

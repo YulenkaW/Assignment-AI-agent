@@ -1,6 +1,6 @@
 # Assignment Agent
 
-This repository contains a separate assignment-focused implementation in `src/assignment_agent` for the context-constrained C++ agent task.
+This repository contains the goal-driven assignment submission in `src/assignment_agent`.
 The target repository is a local copy of `nlohmann/json`, and the agent is designed to answer code-understanding queries and run real local build and test commands while enforcing a hard 5,000-token context limit.
 
 ## Assignment Fit
@@ -128,7 +128,6 @@ The retrieval path works in this order:
 - `src/assignment_agent/response_generator.py`: final response formatting
 - `src/assignment_agent/contracts.py`: wrapper classes for inter-module contracts
 
-Note: `tool_orchestrator.py` remains in the repository as a legacy helper for older tests and experiments, but it is not part of the main runtime path of this goal-driven submission.
 
 ## Execution Policy
 

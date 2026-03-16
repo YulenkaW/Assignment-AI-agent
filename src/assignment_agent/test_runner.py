@@ -71,7 +71,7 @@ class TestRunner:
             filtered_pattern = execution_intent.extract_test_filter()
             if filtered_pattern:
                 return [self._build_ctest_command(build_directory, execution_intent, filtered_pattern=filtered_pattern)]
-            if execution_intent.direct_tool_name() == "make" and self._has_make():
+            if execution_intent.wants_make_backend() and self._has_make():
                 return [["make", "-C", str(build_directory), "test"]]
             return [self._build_ctest_command(build_directory, execution_intent)]
 

@@ -98,14 +98,15 @@ class ExecutionIntent:
         mentions_build = self._mentions_build_words()
         mentions_tests = self._mentions_test_words()
         mentions_run = self._mentions_action("run", "rerun")
+        action_oriented = self._looks_like_action_oriented_request()
         if self._looks_like_build_and_test_request(mentions_build, mentions_tests, mentions_run):
             return ExecutionRequestKind.BUILD_AND_TEST
-        if mentions_tests:
+        if mentions_tests and action_oriented:
             return ExecutionRequestKind.TEST
-        if mentions_build:
+        if mentions_build and action_oriented:
             return ExecutionRequestKind.BUILD
 
-        if self.backend_preference() is not BackendPreference.DEFAULT:
+        if self.backend_preference() is not BackendPreference.DEFAULT and action_oriented:
             return ExecutionRequestKind.BUILD
         return ExecutionRequestKind.NONE
 
@@ -324,11 +325,23 @@ class ExecutionIntent:
             return False
         if self.extract_build_target_name() or self.extract_test_filter():
             return False
+        if self.backend_preference() is not BackendPreference.DEFAULT:
+            return False
         return "configure" in self.token_set or ("cmake" in self.token_set and "run" in self.token_set) or "valgrind" in self.token_set
 
     def _looks_like_debug_request(self) -> bool:
         """Return True when the query is asking for build or test failure diagnosis."""
         return bool(DEBUG_TOKENS & self.token_set) and (self._mentions_build_words() or self._mentions_test_words())
+
+    def _looks_like_action_oriented_request(self) -> bool:
+        """Return True when the query is asking the agent to perform a command action."""
+        if self.looks_like_direct_tool_command():
+            return True
+        if self._mentions_any(*ACTION_TOKENS):
+            return True
+        if self.backend_preference() is not BackendPreference.DEFAULT:
+            return True
+        return bool(self.extract_makefile_name())
 
     def _mentions_action(self, *tokens: str) -> bool:
         """Return True when any action token is present."""

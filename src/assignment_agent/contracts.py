@@ -134,15 +134,6 @@ class RetrievalPlan:
         self.search_type = retrieval_steps[0].operator_name if retrieval_steps else task_kind
 
 
-class ActionProposal:
-    """Stores the orchestrator's proposed next action."""
-
-    def __init__(self, action_name: str, rationale: str, source: str) -> None:
-        self.action_name = action_name
-        self.rationale = rationale
-        self.source = source
-
-
 class RepositoryChunk:
     """Stores one chunk of source code or build metadata."""
 

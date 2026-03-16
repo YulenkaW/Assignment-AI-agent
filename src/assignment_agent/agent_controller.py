@@ -162,7 +162,7 @@ class AssignmentAgentController:
         analysis_report: AnalysisReport | None = None
         iteration_count = 0
 
-        while iteration_count < 6:
+        while iteration_count < self.stop_retry_controller.max_iterations:
             allowed_actions = self._build_allowed_actions(query_text, route_decision, retrieval_batch, execution_batches, parsed_outputs, analysis_report)
             next_action = self._select_next_action(query_text, route_decision, allowed_actions, retrieval_batch, execution_batches, parsed_outputs, analysis_report)
             self.logger.debug("iteration=%d allowed=%s chosen=%s", iteration_count, allowed_actions, next_action)
@@ -215,19 +215,32 @@ class AssignmentAgentController:
             return "stop"
         if route_decision.needs_execution:
             if not self._has_build_batch(execution_batches) and "run_build" in allowed_actions:
-                return "run_build"
+                return self._validate_action("run_build", allowed_actions)
             if self._should_run_tests(query_text, execution_batches) and "run_tests" in allowed_actions:
-                return "run_tests"
+                return self._validate_action("run_tests", allowed_actions)
             if execution_batches and not parsed_outputs and "parse_output" in allowed_actions:
-                return "parse_output"
+                return self._validate_action("parse_output", allowed_actions)
             if parsed_outputs and analysis_report is None and "analyze_output" in allowed_actions:
-                return "analyze_output"
+                return self._validate_action("analyze_output", allowed_actions)
             if "retrieve_context" in allowed_actions:
-                return "retrieve_context"
-            return allowed_actions[0]
+                return self._validate_action("retrieve_context", allowed_actions)
+            return self._validate_action(allowed_actions[0], allowed_actions)
         if route_decision.needs_retrieval and retrieval_batch is None and "retrieve_context" in allowed_actions:
-            return "retrieve_context"
-        return allowed_actions[0]
+            return self._validate_action("retrieve_context", allowed_actions)
+        return self._validate_action(allowed_actions[0], allowed_actions)
+
+    def _validate_action(self, proposed_action: str, allowed_actions: list[str]) -> str:
+        """Return one allowed action and record a warning when a proposal is invalid."""
+        if proposed_action in allowed_actions:
+            return proposed_action
+        fallback_action = allowed_actions[0] if allowed_actions else "stop"
+        self.error_accumulator.add(
+            "agent_controller",
+            "Rejected disallowed action",
+            f"proposed={proposed_action} fallback={fallback_action}",
+            "warning",
+        )
+        return fallback_action
 
     def _run_retrieval(self, query_text: str, route_decision, analysis_report, plan, diagnostics: QueryDiagnostics):
         """Plan retrieval first, then execute it."""

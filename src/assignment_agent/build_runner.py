@@ -123,9 +123,9 @@ class BuildRunner:
 
     def _build_backend_command(self, build_directory: Path, execution_intent: ExecutionIntent) -> list[str]:
         """Choose the actual backend build command for the current query."""
-        if execution_intent.direct_tool_name() == "make":
+        if execution_intent.wants_make_backend():
             return ["make", "-C", str(build_directory)]
-        if execution_intent.direct_tool_name() == "ninja":
+        if execution_intent.wants_ninja_backend():
             return ["ninja", "-C", str(build_directory)]
         command = ["cmake", "--build", str(build_directory)]
         if os.name == "nt" and not self._uses_single_config_backend(execution_intent):
@@ -135,9 +135,9 @@ class BuildRunner:
 
     def _build_target_command(self, build_directory: Path, execution_intent: ExecutionIntent, target_name: str) -> list[str]:
         """Choose the actual backend command for one explicit build target."""
-        if execution_intent.direct_tool_name() == "make":
+        if execution_intent.wants_make_backend():
             return ["make", "-C", str(build_directory), target_name]
-        if execution_intent.direct_tool_name() == "ninja":
+        if execution_intent.wants_ninja_backend():
             return ["ninja", "-C", str(build_directory), target_name]
         command = ["cmake", "--build", str(build_directory), "--target", target_name]
         if os.name == "nt" and not self._uses_single_config_backend(execution_intent):
