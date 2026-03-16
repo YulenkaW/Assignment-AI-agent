@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.agent-build/
+.pytest_cache/
+.venv/
+.env
+.assignment_agent_memory/
+.assignment_agent_work/
+.coverage
+.idea/
+.pytest_tmp/
+.test_memory/
+pytest-cache-files-*/
+src/*.egg-info/

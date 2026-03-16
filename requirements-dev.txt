@@ -1,0 +1,2 @@
+-e .[dev]
+coverage>=7.0.0

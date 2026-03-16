@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "context-constrained-cpp-agent"
+version = "0.2.0"
+description = "A context-constrained Python agent for understanding and building local C++ codebases."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "langchain>=0.3.0",
+  "langchain-openai>=0.3.0",
+  "tiktoken>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+]
+
+[project.scripts]
+cpp-agent = "context_agent.command_line:main"
+assignment-agent = "assignment_agent.command_line:main"
+assignment-agent-ui = "assignment_agent.demo_ui:main"
+assignment-agent-goal-ui = "assignment_agent.goal_demo_ui:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
