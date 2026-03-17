@@ -34,7 +34,7 @@ class ReasoningEngine:
         self.model_name = model_name
         self.logger = logging.getLogger(__name__)
         self.chat_model = self._build_chat_model()
-        self.build_artifact_inspector = BuildArtifactInspector()
+        self.build_artifact_inspector = None
         self.command_unavailable_markers = (
             "required command is unavailable",
             "the system cannot find the file specified",
@@ -67,7 +67,9 @@ class ReasoningEngine:
                 execution_batches,
                 analysis_report,
             )
-            return self._polish_grounded_understanding(query_text, deterministic_outcome, diagnostics)
+            if self._requests_polished_explanation(query_text):
+                return self._polish_grounded_understanding(query_text, deterministic_outcome, diagnostics)
+            return deterministic_outcome
         if route_decision.needs_execution and execution_batches:
             return self._reason_deterministically(query_text, route_decision, retrieval_batch, execution_batches, analysis_report)
         if working_memory is not None and self._can_call_model():
@@ -96,6 +98,12 @@ class ReasoningEngine:
     def _can_call_model(self) -> bool:
         """Return True when model calls are available."""
         return self.chat_model is not None and ChatPromptTemplate is not None
+
+    def _get_build_artifact_inspector(self) -> BuildArtifactInspector:
+        """Create the build-artifact inspector only when a summary path needs it."""
+        if self.build_artifact_inspector is None:
+            self.build_artifact_inspector = BuildArtifactInspector()
+        return self.build_artifact_inspector
 
     def _reason_with_model(
         self,
@@ -219,6 +227,15 @@ class ReasoningEngine:
                 diagnostics.add_fallback("reasoning_engine", str(error))
             return deterministic_outcome
 
+    def _requests_polished_explanation(self, query_text: str) -> bool:
+        """Return True when the user explicitly asks for a polished final explanation."""
+        lowered_query = query_text.lower()
+        return (
+            "final polished explanation" in lowered_query
+            or "polished explanation" in lowered_query
+            or "polish the explanation" in lowered_query
+        )
+
     def _build_user_next_steps(
         self,
         execution_batches: list[ExecutionBatch],
@@ -234,6 +251,9 @@ class ReasoningEngine:
 
         if analysis_report is None:
             return next_steps
+        lowered_error = analysis_report.first_reported_error.lower()
+        if "microsoft sdks" in lowered_error and "permission issue" in lowered_error:
+            next_steps.append("Run the build from your normal Windows user session instead of a sandboxed process, then retry the same command.")
         if analysis_report.recommended_next_action == "retrieve_more_context":
             next_steps.append("Inspect the referenced file region before changing code.")
         elif analysis_report.recommended_next_action == "answer_with_limited_evidence":
@@ -366,7 +386,7 @@ class ReasoningEngine:
         if not targets:
             build_directory = self._extract_build_directory(execution_batches)
             if build_directory is not None:
-                targets.extend(self.build_artifact_inspector.list_build_targets(build_directory)[:20])
+                targets.extend(self._get_build_artifact_inspector().list_build_targets(build_directory)[:20])
         if not targets:
             return ""
         return "Available build targets: " + ", ".join(targets) + "."
@@ -394,7 +414,7 @@ class ReasoningEngine:
         if not test_names:
             build_directory = self._extract_build_directory(execution_batches)
             if build_directory is not None:
-                test_names.extend(self.build_artifact_inspector.list_ctest_tests(build_directory)[:20])
+                test_names.extend(self._get_build_artifact_inspector().list_ctest_tests(build_directory)[:20])
         if not test_names:
             return ""
         return "Discovered tests: " + ", ".join(test_names) + "."
@@ -421,8 +441,14 @@ class ReasoningEngine:
                 option_index = result.command_parts.index("-B")
                 if option_index + 1 < len(result.command_parts):
                     return Path(result.command_parts[option_index + 1])
+            if result.command_parts[0] == "cmake" and "-LAH" in result.command_parts and "-N" in result.command_parts:
+                return Path(result.command_parts[-1])
             if result.command_parts[0] == "cmake" and "--build" in result.command_parts:
                 option_index = result.command_parts.index("--build")
+                if option_index + 1 < len(result.command_parts):
+                    return Path(result.command_parts[option_index + 1])
+            if result.command_parts[0] == "ctest" and "--test-dir" in result.command_parts:
+                option_index = result.command_parts.index("--test-dir")
                 if option_index + 1 < len(result.command_parts):
                     return Path(result.command_parts[option_index + 1])
         return None

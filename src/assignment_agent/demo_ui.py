@@ -369,6 +369,7 @@ class AssignmentAgentDemoUi:
         if run_id != self.active_run_id:
             return
         self._append_text(self.commands_box, f"{message_text}\n")
+        self.status_var.set(message_text[:140])
 
     def _append_execution_summary(self, run_id: int, response) -> None:
         """Append a compact execution summary after the run completes."""

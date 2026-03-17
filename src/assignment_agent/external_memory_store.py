@@ -92,6 +92,10 @@ class ExternalMemoryStore:
             self.records.append(ExternalMemoryRecord(indexed_file.file_path, indexed_file.summary, indexed_file.file_path))
         self._save()
 
+    def ensure_seeded(self, repository_index) -> None:
+        """Seed file summaries lazily when the store is still empty."""
+        self.seed_file_summaries(repository_index)
+
     def remember_note(self, key: str, summary_text: str, source_path: str) -> None:
         """Store a new external-memory note."""
         for record in self.records:

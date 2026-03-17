@@ -130,14 +130,14 @@ def test_build_runner_can_list_cmake_targets() -> None:
     commands = runner._build_commands("Show build targets")
     assert len(commands) == 1
     assert commands[0][0] == "cmake"
-    assert "-S" in commands[0]
+    assert "-S" in commands[0] or "-LAH" in commands[0]
 
 
 def test_build_runner_can_show_cmake_options() -> None:
     runner = BuildRunner(FIXTURE, WorkspacePaths(FIXTURE, PROJECT_ROOT), ErrorAccumulator())
     commands = runner._build_commands("Show CMake options")
     assert commands[0][0] == "cmake"
-    assert commands[1][:3] == ["cmake", "-LAH", "-N"]
+    assert commands[-1][:3] == ["cmake", "-LAH", "-N"]
 
 
 def test_build_runner_supports_configure_only_valgrind_requests() -> None:
@@ -158,9 +158,12 @@ def test_build_runner_treats_plain_configure_as_configure_only() -> None:
 def test_build_runner_uses_configure_only_for_list_tests_requests() -> None:
     runner = BuildRunner(FIXTURE, WorkspacePaths(FIXTURE, PROJECT_ROOT), ErrorAccumulator())
     commands = runner._build_commands("List tests")
-    assert len(commands) == 1
-    assert commands[0][0] == "cmake"
-    assert "-S" in commands[0]
+    assert commands[-1][0] == "ctest"
+    assert "--test-dir" in commands[-1]
+    assert "-N" in commands[-1]
+    if len(commands) > 1:
+        assert commands[0][0] == "cmake"
+        assert "-S" in commands[0]
 
 
 def test_test_runner_prefers_ctest_commands() -> None:

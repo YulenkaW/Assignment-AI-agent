@@ -41,6 +41,8 @@ class AssignmentAgentController:
     )
     # Match self-contained code anchors such as symbols, namespaces, or source paths.
     SELF_CONTAINED_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*_[A-Za-z0-9_]*|::|[A-Za-z0-9_./-]+\.(?:hpp|h|cpp|cc|cxx)")
+    FILE_NAME_PATTERN = re.compile(r"[A-Za-z0-9_./-]+\.(?:hpp|h|cpp|cc|cxx|ipp|inl)\b", re.IGNORECASE)
+    RESPONSIBILITY_PATTERN = re.compile(r"\b(which|what)\s+files?\b|\bresponsible\b|\barchitecture\b|\bstructure\b", re.IGNORECASE)
 
     def __init__(self, repository_path: str | Path, model_name: str | None = None, max_total_tokens: int = 5000) -> None:
         self.repository_path = Path(repository_path).resolve()
@@ -51,7 +53,7 @@ class AssignmentAgentController:
         self.project_root = Path(__file__).resolve().parents[2]
         self.workspace_paths = WorkspacePaths(self.repository_path, self.project_root)
 
-        self.repository_index = RepositoryIndex(self.repository_path)
+        self.repository_index = RepositoryIndex(self.repository_path, self.workspace_paths.get_index_cache_path())
         self.repository_index.build()
 
         self.task_router = TaskRouter()
@@ -60,7 +62,6 @@ class AssignmentAgentController:
         self.retrieval_planner = RetrievalPlanner()
         self.repository_service = RepositoryService(self.repository_index)
         self.external_memory_store = ExternalMemoryStore(self.project_root / ".assignment_agent_memory", self.repository_path)
-        self.external_memory_store.seed_file_summaries(self.repository_index)
         self.build_runner = BuildRunner(self.repository_path, self.workspace_paths, self.error_accumulator)
         self.test_runner = TestRunner(self.repository_path, self.workspace_paths, self.error_accumulator)
         self.command_output_capture = CommandOutputCapture()
@@ -103,7 +104,7 @@ class AssignmentAgentController:
             diagnostics.execution_batches = len(execution_batches)
             diagnostics.executed_commands = sum(len(execution_batch.results) for execution_batch in execution_batches)
 
-            external_memory_records = self.external_memory_store.find_relevant_records(retrieval_query, limit=5)
+            external_memory_records = self._get_external_memory_records(query_text, route_decision, retrieval_batch)
             diagnostics.external_memory_total = self.external_memory_store.get_record_count()
             diagnostics.external_memory_hits = len(external_memory_records)
             analysis_text = self._render_analysis(analysis_report)
@@ -359,6 +360,27 @@ class AssignmentAgentController:
         diagnostics.cmake_available = CommandExecutor.resolve_command_path("cmake") is not None
         diagnostics.ctest_available = CommandExecutor.resolve_command_path("ctest") is not None
         return diagnostics
+
+    def _get_external_memory_records(self, query_text: str, route_decision, retrieval_batch: RetrievalBatch | None):
+        """Load external memory only for broad or execution-oriented queries."""
+        if not self._should_lookup_external_memory(query_text, route_decision, retrieval_batch):
+            return []
+        self.external_memory_store.ensure_seeded(self.repository_index)
+        return self.external_memory_store.find_relevant_records(query_text, limit=5)
+
+    def _should_lookup_external_memory(self, query_text: str, route_decision, retrieval_batch: RetrievalBatch | None) -> bool:
+        """Skip external memory for direct file or symbol questions that already have exact evidence."""
+        if route_decision.needs_execution:
+            return True
+        if self.RESPONSIBILITY_PATTERN.search(query_text):
+            return True
+        if self.FILE_NAME_PATTERN.search(query_text):
+            return False
+        if self.SELF_CONTAINED_PATTERN.search(query_text) and route_decision.query_mode != "search":
+            return False
+        if retrieval_batch is not None and retrieval_batch.search_type in {"path", "symbol"} and len(retrieval_batch.candidates) <= 2:
+            return False
+        return True
 
     def _build_retrieval_query(self, query_text: str, conversation_turns: list[tuple[str, str]] | None) -> str:
         """Expand short follow-up questions with recent user context for retrieval."""

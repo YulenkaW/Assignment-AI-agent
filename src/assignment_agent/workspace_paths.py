@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import hashlib
+import shutil
 
 
 class WorkspacePaths:
@@ -21,6 +22,20 @@ class WorkspacePaths:
         build_directory = self.base_directory / normalized_variant / "build"
         build_directory.mkdir(parents=True, exist_ok=True)
         return build_directory
+
+    def reset_build_directory(self, variant_name: str = "default") -> Path:
+        """Delete and recreate one workspace-owned build directory."""
+        build_directory = self.get_build_directory(variant_name)
+        if build_directory.exists():
+            shutil.rmtree(build_directory, ignore_errors=True)
+        build_directory.mkdir(parents=True, exist_ok=True)
+        return build_directory
+
+    def get_index_cache_path(self) -> Path:
+        """Return the cache path for the repository index."""
+        cache_directory = self.base_directory / "cache"
+        cache_directory.mkdir(parents=True, exist_ok=True)
+        return cache_directory / "repository_index.pkl"
 
     def _build_repository_key(self, repository_path: Path) -> str:
         """Build a stable per-repository key."""

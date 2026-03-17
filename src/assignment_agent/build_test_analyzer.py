@@ -50,13 +50,14 @@ class BuildTestAnalyzer:
                 continue
 
             for error_line in parsed_output.error_lines:
+                normalized_error = self._normalize_environment_error(error_line)
                 if not first_reported_error:
-                    first_reported_error = error_line
+                    first_reported_error = normalized_error
                 if self._is_environment_error(error_line):
                     found_environment_error = True
-                    root_cause_candidates.append(RootCauseCandidate(error_line, confidence=0.98))
+                    root_cause_candidates.append(RootCauseCandidate(normalized_error, confidence=0.98))
                 else:
-                    root_cause_candidates.append(RootCauseCandidate(error_line, confidence=0.6))
+                    root_cause_candidates.append(RootCauseCandidate(normalized_error, confidence=0.6))
 
             for file_path, line_number in parsed_output.file_references:
                 relevant_files.append(file_path)
@@ -133,3 +134,14 @@ class BuildTestAnalyzer:
         """Return True when an error line clearly points to the local environment."""
         lowered_line = error_line.lower()
         return any(marker in lowered_line for marker in self.environment_error_markers)
+
+    def _normalize_environment_error(self, error_line: str) -> str:
+        """Rewrite known environment failures into clearer user-facing summaries."""
+        lowered_line = error_line.lower()
+        if "microsoft sdks" in lowered_line and "access to the path" in lowered_line and "is denied" in lowered_line:
+            return (
+                "MSBuild failed before compiling project code because the current process could not access the local "
+                "Windows SDK cache under AppData\\Local\\Microsoft SDKs. This points to a local user or sandbox "
+                "permission issue rather than a defect in the repository."
+            )
+        return error_line

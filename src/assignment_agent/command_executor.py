@@ -44,6 +44,8 @@ class CommandExecutor:
         Path(r"C:\Program Files\CMake\bin"),
         Path(r"C:\Program Files (x86)\CMake\bin"),
     )
+    _RESOLUTION_CACHE: dict[tuple[str, str, str, tuple[str, ...]], str] = {}
+
     def __init__(
         self,
         repository_path: Path,
@@ -212,6 +214,15 @@ class CommandExecutor:
         if not command_name:
             return None
         normalized_name = command_name.lower()
+        cache_key = (
+            normalized_name,
+            os.name,
+            os.environ.get("PATH", ""),
+            tuple(str(path) for path in cls.WINDOWS_FALLBACK_DIRECTORIES),
+        )
+        cached_path = cls._RESOLUTION_CACHE.get(cache_key)
+        if cached_path is not None:
+            return cached_path
         command_path = Path(command_name)
         if command_path.is_absolute() or command_path.parent != Path("."):
             if command_path.exists():
@@ -222,6 +233,7 @@ class CommandExecutor:
         for candidate_name in candidate_names:
             resolved_path = shutil.which(candidate_name)
             if resolved_path is not None:
+                cls._RESOLUTION_CACHE[cache_key] = resolved_path
                 return resolved_path
         if os.name != "nt":
             return None
@@ -236,11 +248,19 @@ class CommandExecutor:
             for candidate_name in executable_candidates:
                 candidate_path = directory / candidate_name
                 if candidate_path.exists():
-                    return str(candidate_path)
+                    resolved_path = str(candidate_path)
+                    cls._RESOLUTION_CACHE[cache_key] = resolved_path
+                    return resolved_path
         discovered_executable = cls._discover_windows_executable(normalized_name, executable_candidates)
         if discovered_executable is not None:
+            cls._RESOLUTION_CACHE[cache_key] = discovered_executable
             return discovered_executable
         return None
+
+    @classmethod
+    def clear_resolution_cache(cls) -> None:
+        """Clear cached command resolutions for tests or environment changes."""
+        cls._RESOLUTION_CACHE.clear()
 
     @classmethod
     def _windows_fallback_directories(cls, command_name: str) -> tuple[Path, ...]:
@@ -352,6 +372,7 @@ class CommandExecutor:
             stderr=subprocess.STDOUT,
             shell=False,
             bufsize=1,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0,
         )
         line_queue: queue.Queue[str] = queue.Queue()
         reader_thread = threading.Thread(

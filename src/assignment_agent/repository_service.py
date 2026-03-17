@@ -84,6 +84,9 @@ class RepositoryService:
 
     def retrieve(self, retrieval_plan: RetrievalPlan) -> RetrievalBatch:
         """Run the requested retrieval plan."""
+        exact_file_batch = self._try_exact_file_lookup(retrieval_plan)
+        if exact_file_batch is not None:
+            return exact_file_batch
         if retrieval_plan.retrieval_steps:
             return self._retrieve_from_steps(retrieval_plan)
         if retrieval_plan.search_type == "execution_guided":
@@ -101,6 +104,33 @@ class RepositoryService:
                 return batch
             return self._keyword_search(retrieval_plan)
         return self._keyword_search(retrieval_plan)
+
+    def _try_exact_file_lookup(self, retrieval_plan: RetrievalPlan) -> RetrievalBatch | None:
+        """Short-circuit direct file questions before broader retrieval work."""
+        if retrieval_plan.task_kind not in {"definition_lookup", "location_lookup"}:
+            return None
+        target_file_name = self._extract_requested_file_name(retrieval_plan.query_text)
+        if not target_file_name:
+            return None
+
+        candidates = []
+        for indexed_file in self._iter_indexed_files(retrieval_plan):
+            if Path(indexed_file.file_path).name.lower() != target_file_name:
+                continue
+            if not indexed_file.chunks:
+                continue
+            candidates.append(
+                RetrievalCandidate(
+                    indexed_file.file_path,
+                    indexed_file.chunks[0].get_location_text(),
+                    200,
+                    "exact file name match",
+                    indexed_file.chunks[0],
+                )
+            )
+        if not candidates:
+            return None
+        return self._finalize_batch(candidates, "path", retrieval_plan)
 
     def _retrieve_from_steps(self, retrieval_plan: RetrievalPlan) -> RetrievalBatch:
         """Run the ordered fallback chain until the evidence target is met."""
@@ -383,6 +413,14 @@ class RepositoryService:
     def _looks_like_file_identifier(self, identifier: str) -> bool:
         """Return True when an identifier names a concrete source file."""
         return self.FILE_NAME_PATTERN.fullmatch(identifier) is not None
+
+    def _extract_requested_file_name(self, query_text: str) -> str:
+        """Return one explicit source file name mentioned by the user."""
+        for raw_term in self.TERM_PATTERN.findall(query_text):
+            lowered_term = raw_term.lower()
+            if self._looks_like_file_identifier(lowered_term):
+                return Path(lowered_term).name.lower()
+        return ""
 
     def _expand_token_variants(self, raw_term: str) -> list[str]:
         """Preserve the full code token plus weaker split variants."""

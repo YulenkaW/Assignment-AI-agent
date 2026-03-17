@@ -64,15 +64,28 @@ class BuildRunner:
         if explicit_makefile:
             return [["make", "-f", str(self._resolve_repo_file(explicit_makefile))]]
         if (self.repository_path / "CMakeLists.txt").exists():
-            build_directory = self.workspace_paths.get_build_directory(self._build_variant_name(execution_intent))
+            build_variant = self._build_variant_name(execution_intent)
+            build_directory = self.workspace_paths.get_build_directory(build_variant)
+            needs_test_metadata = execution_intent.requests_list_tests()
+            if self._should_reset_build_directory(build_directory, needs_test_metadata):
+                build_directory = self.workspace_paths.reset_build_directory(build_variant)
+            has_valid_configure = self._is_configured_build_directory(build_directory)
+            has_test_metadata = self._has_test_metadata(build_directory)
             configure_command = self._build_configure_command(build_directory, execution_intent)
             if execution_intent.requests_show_cmake_options():
+                if has_valid_configure:
+                    return [["cmake", "-LAH", "-N", str(build_directory)]]
                 return [configure_command, ["cmake", "-LAH", "-N", str(build_directory)]]
             # These read-only questions are answered from generated build artifacts later.
             if execution_intent.requests_build_targets():
+                if has_valid_configure:
+                    return [["cmake", "-LAH", "-N", str(build_directory)]]
                 return [configure_command]
             if execution_intent.requests_list_tests():
-                return [configure_command]
+                list_command = self._build_list_tests_command(build_directory, execution_intent)
+                if has_valid_configure and has_test_metadata:
+                    return [list_command]
+                return [configure_command, list_command]
             if execution_intent.requests_configure_only():
                 return [configure_command]
             explicit_target = execution_intent.extract_build_target_name()
@@ -144,6 +157,18 @@ class BuildRunner:
             command.extend(["--config", "Release"])
         return command
 
+    def _build_list_tests_command(self, build_directory: Path, execution_intent: ExecutionIntent) -> list[str]:
+        """Build the read-only CTest list command for the current platform."""
+        return self._build_ctest_list_command(build_directory, execution_intent)
+
+    def _build_ctest_list_command(self, build_directory: Path, execution_intent: ExecutionIntent) -> list[str]:
+        """Return the `ctest -N` command used for test discovery."""
+        command = ["ctest", "--test-dir", str(build_directory)]
+        if os.name == "nt" and not self._uses_single_config_backend(execution_intent):
+            command.extend(["-C", "Release"])
+        command.append("-N")
+        return command
+
     def _uses_single_config_backend(self, execution_intent: ExecutionIntent) -> bool:
         """Return True when the query explicitly configures a single-config generator."""
         return execution_intent.wants_make_backend() or execution_intent.wants_ninja_backend()
@@ -155,6 +180,42 @@ class BuildRunner:
         if execution_intent.wants_ninja_backend():
             return "ninja"
         return "default"
+
+    def _is_configured_build_directory(self, build_directory: Path) -> bool:
+        """Return True when the build directory contains a usable CMake configuration."""
+        cache_file = build_directory / "CMakeCache.txt"
+        if not cache_file.is_file():
+            return False
+        home_directory_line = ""
+        try:
+            for raw_line in cache_file.read_text(encoding="utf-8", errors="ignore").splitlines():
+                if raw_line.startswith("CMAKE_HOME_DIRECTORY:INTERNAL="):
+                    home_directory_line = raw_line.split("=", 1)[1].strip()
+                    break
+        except OSError:
+            return False
+        if not home_directory_line:
+            return False
+        return Path(home_directory_line).resolve() == self.repository_path
+
+    def _has_test_metadata(self, build_directory: Path) -> bool:
+        """Return True when generated CTest metadata already exists."""
+        for test_file in build_directory.rglob("CTestTestfile.cmake"):
+            if test_file.is_file():
+                return True
+        return False
+
+    def _should_reset_build_directory(self, build_directory: Path, needs_test_metadata: bool) -> bool:
+        """Return True when the workspace-owned build directory is stale or half-generated."""
+        if not build_directory.exists():
+            return False
+        if self._is_configured_build_directory(build_directory):
+            return False
+        if not any(build_directory.iterdir()):
+            return False
+        if needs_test_metadata and self._has_test_metadata(build_directory):
+            return False
+        return True
 
     def _resolve_repo_file(self, file_name: str) -> Path:
         """Resolve a user-named file relative to the repository root when needed."""

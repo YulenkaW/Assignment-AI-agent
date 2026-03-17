@@ -31,6 +31,7 @@ It trims and compresses based on token budget."""
         self.reserved_instruction_tokens = reserved_instruction_tokens
         self.logger = logging.getLogger(__name__)
         self.encoding = self._load_encoding(model_name)
+        self._token_count_cache = {}
 
     def get_retrieval_token_capacity(self) -> int:
         """Return the token budget that retrieval is allowed to consume."""
@@ -41,9 +42,17 @@ It trims and compresses based on token budget."""
 
     def count_tokens(self, text: str) -> int:
         """Count tokens using tiktoken when available."""
+        cached_count = self._token_count_cache.get(text)
+        if cached_count is not None:
+            return cached_count
         if self.encoding is None:
-            return max(1, len(text.split()))
-        return len(self.encoding.encode(text))
+            token_count = max(1, len(text.split()))
+        else:
+            token_count = len(self.encoding.encode(text))
+        if len(self._token_count_cache) >= 2048:
+            self._token_count_cache.clear()
+        self._token_count_cache[text] = token_count
+        return token_count
 
     def assemble_working_memory(
         self,

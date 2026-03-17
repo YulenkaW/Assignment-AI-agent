@@ -8,7 +8,7 @@ from .contracts import AnalysisReport, StopDecision
 class StopRetryController:
     """Decide whether the controller should stop or do one more retrieval cycle."""
 
-    def __init__(self, max_iterations: int = 2) -> None:
+    def __init__(self, max_iterations: int = 6) -> None:
         self.max_iterations = max_iterations
 
     def decide(self, iteration_count: int, analysis_report: AnalysisReport | None, remaining_retrieval_tokens: int) -> StopDecision:

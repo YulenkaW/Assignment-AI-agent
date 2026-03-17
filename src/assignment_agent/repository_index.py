@@ -8,6 +8,7 @@ text windows only.
 from __future__ import annotations
 
 from pathlib import Path
+import pickle
 import re
 
 from .contracts import IndexedFile, RepositoryChunk
@@ -32,18 +33,25 @@ class RepositoryIndex:
     # Match block-style declarations that should be extended to their closing brace.
     BLOCK_DECLARATION_PATTERN = re.compile(r"\b(?:class|struct|namespace|enum)\b")
 
-    def __init__(self, repository_path: Path) -> None:
+    def __init__(self, repository_path: Path, cache_path: Path | None = None) -> None:
         self.repository_path = repository_path
+        self.cache_path = cache_path
         self.files = {}
         self.symbol_map = {}
         self.chunk_map = {}
 
     def build(self) -> None:
         """Scan the repository and populate the index."""
-        for file_path in self.repository_path.rglob("*"):
+        supported_files = self._collect_supported_files()
+        manifest = self._build_manifest(supported_files)
+        if self._load_from_cache(manifest):
+            return
+
+        self.files = {}
+        self.symbol_map = {}
+        self.chunk_map = {}
+        for file_path in supported_files:
             if not file_path.is_file():
-                continue
-            if not self._is_supported_file(file_path):
                 continue
             relative_path = file_path.relative_to(self.repository_path).as_posix()
             text = file_path.read_text(encoding="utf-8", errors="ignore")
@@ -51,6 +59,7 @@ class RepositoryIndex:
             self.files[relative_path] = indexed_file
             self._register_symbols(indexed_file)
             self._register_chunks(indexed_file)
+        self._save_to_cache(manifest)
 
     def find_by_path_suffix(self, path_text: str) -> IndexedFile | None:
         """Return the indexed file that ends with the given path."""
@@ -65,6 +74,58 @@ class RepositoryIndex:
         if file_path.name == "CMakeLists.txt":
             return True
         return file_path.suffix.lower() in self.SUPPORTED_EXTENSIONS
+
+    def _collect_supported_files(self) -> list[Path]:
+        """Return the supported files that should be indexed."""
+        supported_files = []
+        for file_path in self.repository_path.rglob("*"):
+            if not file_path.is_file():
+                continue
+            if not self._is_supported_file(file_path):
+                continue
+            supported_files.append(file_path)
+        return supported_files
+
+    def _build_manifest(self, supported_files: list[Path]) -> list[tuple[str, int, int]]:
+        """Build a lightweight manifest used to validate the cached index."""
+        manifest = []
+        for file_path in supported_files:
+            stat_result = file_path.stat()
+            manifest.append(
+                (
+                    file_path.relative_to(self.repository_path).as_posix(),
+                    int(stat_result.st_mtime_ns),
+                    int(stat_result.st_size),
+                )
+            )
+        return manifest
+
+    def _load_from_cache(self, manifest: list[tuple[str, int, int]]) -> bool:
+        """Load a cached index when the file manifest still matches."""
+        if self.cache_path is None or not self.cache_path.is_file():
+            return False
+        try:
+            cached_payload = pickle.loads(self.cache_path.read_bytes())
+        except Exception:
+            return False
+        if cached_payload.get("manifest") != manifest:
+            return False
+        self.files = cached_payload.get("files", {})
+        self.symbol_map = cached_payload.get("symbol_map", {})
+        self.chunk_map = cached_payload.get("chunk_map", {})
+        return bool(self.files)
+
+    def _save_to_cache(self, manifest: list[tuple[str, int, int]]) -> None:
+        """Persist the built index for reuse by later controller instances."""
+        if self.cache_path is None:
+            return
+        payload = {
+            "manifest": manifest,
+            "files": self.files,
+            "symbol_map": self.symbol_map,
+            "chunk_map": self.chunk_map,
+        }
+        self.cache_path.write_bytes(pickle.dumps(payload))
 
     def _index_file(self, relative_path: str, text: str) -> IndexedFile:
         """Create the indexed representation for one file."""
